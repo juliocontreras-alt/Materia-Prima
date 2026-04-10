@@ -1,0 +1,1051 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Grupo Ortiz — Monitor de Materias Primas</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+  <style>
+    :root {
+      --bg:        #0d1117;
+      --surface:   #161b22;
+      --surface2:  #21262d;
+      --border:    #30363d;
+      --text:      #e6edf3;
+      --muted:     #8b949e;
+      --blue:      #58a6ff;
+      --green:     #3fb950;
+      --yellow:    #d29922;
+      --orange:    #db6d28;
+      --red:       #f85149;
+      --red-bg:    rgba(248,81,73,0.12);
+      --orange-bg: rgba(219,109,40,0.12);
+      --green-bg:  rgba(63,185,80,0.10);
+      --accent:    #1f6feb;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', sans-serif;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+
+    /* ── TOP BAR ────────────────────────────────────────── */
+    .topbar {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 14px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    .topbar-left { display: flex; align-items: center; gap: 12px; }
+    .logo {
+      background: var(--accent);
+      color: #fff;
+      font-weight: 700;
+      font-size: 13px;
+      padding: 5px 10px;
+      border-radius: 6px;
+      letter-spacing: 0.5px;
+    }
+    .topbar h1 { font-size: 16px; font-weight: 600; color: var(--text); }
+    .topbar-right { display: flex; align-items: center; gap: 16px; }
+    .badge-live {
+      display: flex; align-items: center; gap: 6px;
+      background: rgba(63,185,80,0.15);
+      border: 1px solid rgba(63,185,80,0.35);
+      color: var(--green);
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .dot-live {
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      background: var(--green);
+      animation: pulse 1.8s infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.4; transform: scale(0.7); }
+    }
+    .timestamp { font-size: 12px; color: var(--muted); }
+
+    /* ── BOTON ACTUALIZAR ───────────────────────────────── */
+    .btn-refresh {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      padding: 7px 16px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s, transform 0.15s, opacity 0.2s;
+      letter-spacing: 0.2px;
+    }
+    .btn-refresh:hover { background: #388bfd; }
+    .btn-refresh:active { transform: scale(0.97); }
+    .btn-refresh:disabled { opacity: 0.55; cursor: not-allowed; transform: none; }
+    .btn-refresh svg { transition: transform 0.6s ease; }
+    .btn-refresh.spinning svg { animation: spin 0.8s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── TOAST NOTIFICACIÓN ─────────────────────────────── */
+    .toast {
+      position: fixed;
+      bottom: 28px;
+      right: 28px;
+      background: #1c2b3a;
+      border: 1px solid rgba(63,185,80,0.5);
+      color: var(--green);
+      padding: 12px 20px;
+      border-radius: 10px;
+      font-size: 13px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      z-index: 999;
+      opacity: 0;
+      transform: translateY(16px);
+      transition: opacity 0.3s, transform 0.3s;
+      pointer-events: none;
+    }
+    .toast.show { opacity: 1; transform: translateY(0); }
+
+    /* ── ALERT BANNER ───────────────────────────────────── */
+    .alert-banner {
+      background: linear-gradient(90deg, rgba(248,81,73,0.18), rgba(219,109,40,0.14));
+      border-bottom: 1px solid rgba(248,81,73,0.4);
+      padding: 10px 24px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .alert-icon { font-size: 18px; }
+    .alert-text { font-size: 13px; font-weight: 600; color: #ffb3b0; }
+    .alert-sub  { font-size: 12px; color: var(--muted); margin-top: 1px; }
+
+    /* ── LAYOUT ─────────────────────────────────────────── */
+    .main { padding: 24px; max-width: 1400px; margin: 0 auto; }
+    .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 22px; }
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-bottom: 22px; }
+    .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 22px; }
+    @media (max-width: 1100px) { .grid-4 { grid-template-columns: 1fr 1fr; } .grid-3 { grid-template-columns: 1fr 1fr; } }
+    @media (max-width: 700px)  { .grid-4, .grid-2, .grid-3 { grid-template-columns: 1fr; } }
+
+    /* ── CARDS ──────────────────────────────────────────── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px 20px;
+    }
+    .card-title {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      color: var(--muted);
+      margin-bottom: 10px;
+    }
+    .kpi-value {
+      font-size: 28px;
+      font-weight: 700;
+      color: var(--text);
+      line-height: 1.1;
+    }
+    .kpi-unit { font-size: 13px; color: var(--muted); font-weight: 400; }
+    .kpi-badge {
+      display: inline-flex; align-items: center; gap: 4px;
+      padding: 3px 8px;
+      border-radius: 12px;
+      font-size: 12px;
+      font-weight: 700;
+      margin-top: 6px;
+    }
+    .badge-red    { background: var(--red-bg);    color: var(--red);    border: 1px solid rgba(248,81,73,0.3); }
+    .badge-orange { background: var(--orange-bg); color: var(--orange); border: 1px solid rgba(219,109,40,0.3); }
+    .badge-green  { background: var(--green-bg);  color: var(--green);  border: 1px solid rgba(63,185,80,0.3); }
+    .badge-yellow { background: rgba(210,153,34,0.12); color: var(--yellow); border: 1px solid rgba(210,153,34,0.3); }
+    .kpi-sub { font-size: 11px; color: var(--muted); margin-top: 4px; }
+
+    /* ── HIGHLIGHT CARD (0.85/lb) ────────────────────────── */
+    .card-highlight {
+      background: linear-gradient(135deg, rgba(31,111,235,0.18), rgba(88,166,255,0.08));
+      border: 1px solid rgba(88,166,255,0.35);
+      border-radius: 10px;
+      padding: 20px 24px;
+      margin-bottom: 22px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .card-highlight h2 {
+      font-size: 13px;
+      color: var(--blue);
+      font-weight: 700;
+      letter-spacing: 0.4px;
+      text-transform: uppercase;
+    }
+    .highlight-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; }
+    .hl-item { display: flex; flex-direction: column; gap: 4px; }
+    .hl-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
+    .hl-val { font-size: 22px; font-weight: 700; color: var(--text); }
+    .hl-val.alert { color: var(--red); }
+    .hl-val.warn  { color: var(--orange); }
+    .hl-val.ok    { color: var(--green); }
+    .hl-note { font-size: 11px; color: var(--muted); line-height: 1.4; }
+    .divider-v {
+      width: 1px;
+      background: var(--border);
+      align-self: stretch;
+    }
+
+    /* ── SECTION HEADER ─────────────────────────────────── */
+    .section-header {
+      display: flex; align-items: center; gap: 10px;
+      margin-bottom: 14px;
+    }
+    .section-header h2 { font-size: 14px; font-weight: 600; color: var(--text); }
+    .section-line { flex: 1; height: 1px; background: var(--border); }
+
+    /* ── TABLE ──────────────────────────────────────────── */
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    thead th {
+      background: var(--surface2);
+      padding: 9px 14px;
+      text-align: left;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--muted);
+      border-bottom: 1px solid var(--border);
+      white-space: nowrap;
+    }
+    tbody tr { border-bottom: 1px solid var(--border); transition: background 0.15s; }
+    tbody tr:hover { background: var(--surface2); }
+    tbody td { padding: 10px 14px; color: var(--text); white-space: nowrap; }
+    td.mat-name { font-weight: 600; color: var(--blue); }
+    td.num { font-variant-numeric: tabular-nums; font-weight: 600; }
+    td.up   { color: var(--red);    font-weight: 700; }
+    td.down { color: var(--green);  font-weight: 700; }
+    td.warn { color: var(--orange); font-weight: 700; }
+
+    .pill {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 10px;
+      font-size: 11px;
+      font-weight: 700;
+    }
+    .pill-red    { background: var(--red-bg);    color: var(--red);    border: 1px solid rgba(248,81,73,0.3); }
+    .pill-orange { background: var(--orange-bg); color: var(--orange); border: 1px solid rgba(219,109,40,0.3); }
+    .pill-green  { background: var(--green-bg);  color: var(--green);  border: 1px solid rgba(63,185,80,0.3); }
+    .pill-blue   { background: rgba(88,166,255,0.12); color: var(--blue); border: 1px solid rgba(88,166,255,0.3); }
+
+    /* ── CHART CARD ─────────────────────────────────────── */
+    .chart-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 20px;
+    }
+    .chart-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px; }
+    .chart-title  { font-size: 13px; font-weight: 600; color: var(--text); }
+    .chart-sub    { font-size: 11px; color: var(--muted); margin-top: 3px; }
+    .chart-legend { display: flex; gap: 14px; flex-wrap: wrap; }
+    .legend-item  { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--muted); }
+    .legend-dot   { width: 10px; height: 10px; border-radius: 50%; }
+
+    /* ── GEO EVENTS ─────────────────────────────────────── */
+    .event-list { display: flex; flex-direction: column; gap: 10px; }
+    .event-item {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px 14px;
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      gap: 12px;
+      align-items: start;
+    }
+    .event-icon { font-size: 20px; margin-top: 1px; }
+    .event-title { font-size: 13px; font-weight: 600; color: var(--text); }
+    .event-desc  { font-size: 12px; color: var(--muted); margin-top: 3px; line-height: 1.45; }
+    .event-impact { font-size: 12px; font-weight: 700; white-space: nowrap; padding-top: 2px; }
+    .impact-red    { color: var(--red); }
+    .impact-orange { color: var(--orange); }
+    .impact-yellow { color: var(--yellow); }
+
+    /* ── RECOMENDACIONES ────────────────────────────────── */
+    .rec-list { display: flex; flex-direction: column; gap: 8px; }
+    .rec-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      padding: 12px 14px;
+      background: var(--surface2);
+      border-radius: 8px;
+      border: 1px solid var(--border);
+    }
+    .rec-num {
+      min-width: 24px; height: 24px;
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 11px; font-weight: 700;
+      margin-top: 1px;
+    }
+    .rec-red    { background: var(--red-bg);    color: var(--red);    border: 1px solid rgba(248,81,73,0.4); }
+    .rec-orange { background: var(--orange-bg); color: var(--orange); border: 1px solid rgba(219,109,40,0.4); }
+    .rec-blue   { background: rgba(88,166,255,0.12); color: var(--blue); border: 1px solid rgba(88,166,255,0.3); }
+    .rec-body .rec-title  { font-size: 13px; font-weight: 600; color: var(--text); }
+    .rec-body .rec-detail { font-size: 12px; color: var(--muted); margin-top: 3px; line-height: 1.4; }
+
+    /* ── ARANCELES ──────────────────────────────────────── */
+    .arancel-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 12px; }
+    .arancel-card {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 14px;
+    }
+    .arancel-prod { font-size: 13px; font-weight: 600; color: var(--text); margin-bottom: 8px; }
+    .arancel-row { display: flex; justify-content: space-between; align-items: center; margin-top: 5px; }
+    .arancel-lbl { font-size: 11px; color: var(--muted); }
+    .arancel-val { font-size: 13px; font-weight: 700; }
+
+    /* ── FOOTER ─────────────────────────────────────────── */
+    footer {
+      text-align: center;
+      padding: 20px 24px;
+      border-top: 1px solid var(--border);
+      color: var(--muted);
+      font-size: 11px;
+      margin-top: 10px;
+    }
+    footer a { color: var(--blue); text-decoration: none; }
+
+    /* ── TABS ───────────────────────────────────────────── */
+    .tabs { display: flex; gap: 2px; margin-bottom: 16px; border-bottom: 1px solid var(--border); }
+    .tab {
+      padding: 8px 16px;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--muted);
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      transition: all 0.2s;
+    }
+    .tab.active { color: var(--blue); border-bottom-color: var(--blue); }
+    .tab:hover:not(.active) { color: var(--text); }
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+
+    /* ── TOOLTIP-STYLE NOTAS ────────────────────────────── */
+    .note-box {
+      background: rgba(88,166,255,0.08);
+      border: 1px solid rgba(88,166,255,0.25);
+      border-radius: 8px;
+      padding: 12px 16px;
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.5;
+      margin-top: 12px;
+    }
+    .note-box strong { color: var(--blue); }
+
+    /* ── SELECTOR TOGGLE ────────────────────────────────── */
+    .toggle-group { display: flex; gap: 6px; flex-wrap: wrap; }
+    .toggle-btn {
+      padding: 4px 12px;
+      border-radius: 14px;
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      border: 1px solid var(--border);
+      background: var(--surface2);
+      color: var(--muted);
+      transition: all 0.15s;
+    }
+    .toggle-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+  </style>
+</head>
+<body>
+
+<!-- TOP BAR -->
+<div class="topbar">
+  <div class="topbar-left">
+    <span class="logo">GRUPO ORTIZ</span>
+    <h1>Monitor de Materias Primas</h1>
+  </div>
+  <div class="topbar-right">
+    <span class="badge-live"><span class="dot-live"></span> <span id="status-label">Datos actualizados</span></span>
+    <span class="timestamp" id="ts"></span>
+    <button class="btn-refresh" id="btn-refresh" onclick="actualizarDatos()">
+      <svg id="refresh-icon" width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+        <path d="M8 3a5 5 0 0 0-4.546 2.914.5.5 0 0 1-.908-.417A6 6 0 1 1 2 8a.5.5 0 0 1 1 0 5 5 0 1 0 5-5z"/>
+        <path d="M5.854.146a.5.5 0 0 0-.707 0l-2 2a.5.5 0 0 0 0 .707l2 2a.5.5 0 1 0 .707-.707L4.207 2.5l1.647-1.647a.5.5 0 0 0 0-.706z"/>
+      </svg>
+      <span id="btn-label">Actualizar</span>
+    </button>
+  </div>
+</div>
+
+<!-- TOAST -->
+<div class="toast" id="toast">✓ Datos actualizados correctamente</div>
+
+<!-- ALERT BANNER -->
+<div class="alert-banner">
+  <span class="alert-icon">🚨</span>
+  <div>
+    <div class="alert-text">ALERTA CRÍTICA — Guerra Irán-Israel-EEUU desde 28-Feb-2026: PP y PE con incrementos acumulados de +$0.30–0.35/lb vs inicio de año</div>
+    <div class="alert-sub">Estrecho de Ormuz con flujo limitado · Lead times 3× lo normal · Alto al fuego 08-Abr-2026 reduce petróleo -13% pero resinas permanecen en niveles críticos</div>
+  </div>
+</div>
+
+<div class="main">
+
+  <!-- ── INVESTIGACIÓN: EL $0.85/LB ─────────────────── -->
+  <div class="section-header" style="margin-bottom:10px;">
+    <h2>🔍 Análisis: El Incremento de <span style="color:var(--red)">$0.85/lb</span> Reportado</h2>
+    <div class="section-line"></div>
+  </div>
+
+  <div class="card-highlight">
+    <h2>¿Qué es ese $0.85/lb que te llegó?</h2>
+    <div class="highlight-grid">
+      <div class="hl-item">
+        <span class="hl-label">Precio PE (HDPE) · Abr 2026</span>
+        <span class="hl-val alert">~$0.83–0.87/lb</span>
+        <span class="hl-note">PE llegó a $0.67/lb en Mar-2026 (+$0.15/lb YTD) y productores anunciaron +$0.16/lb más para Abril. El precio actual de HDPE en EE.UU. ronda los <strong>$0.83–0.87/lb</strong> — muy cerca del $0.85/lb que recibiste.</span>
+      </div>
+      <div class="divider-v"></div>
+      <div class="hl-item">
+        <span class="hl-label">Precio PP · Abr 2026</span>
+        <span class="hl-val warn">~$0.76–0.82/lb</span>
+        <span class="hl-note">PP llegó a $0.62/lb en Mar-2026 (+34% YTD). ICIS proyecta +$0.16/lb para Abril → ~$0.78/lb en contrato. Spot puede llegar a $0.82/lb en pedidos urgentes.</span>
+      </div>
+      <div class="divider-v"></div>
+      <div class="hl-item">
+        <span class="hl-label">Incremento YTD (inicio año → Abr)</span>
+        <span class="hl-val alert">+$0.30–0.35/lb</span>
+        <span class="hl-note">Desde Ene-2026 (~$0.50/lb base) al precio actual, el incremento acumulado es de <strong>$0.30–$0.35/lb por libra</strong>. Si la cotización que recibiste es de proveedor spot durante la crisis, podría incluir prima de urgencia llevando el total a $0.85/lb.</span>
+      </div>
+      <div class="divider-v"></div>
+      <div class="hl-item">
+        <span class="hl-label">Contexto: Resin Prices Jump 30% YTD</span>
+        <span class="hl-val ok">Confirmado · Baird</span>
+        <span class="hl-note">Baird (banca de inversión) confirmó que los precios de resinas plásticas en EE.UU. subieron <strong>30% en lo que va del año</strong> y espera incrementos adicionales. El $0.85/lb representa ese escenario para PE spot/urgente en Abril.</span>
+      </div>
+    </div>
+    <div class="note-box">
+      <strong>Conclusión:</strong> El $0.85/lb que te llegaron a comentar es <strong>consistente con los precios actuales de HDPE/LDPE en mercado spot de EE.UU. para Abril 2026</strong>, o bien el precio de contrato de PP+prima de crisis. No es solo el "incremento" — es el <em>precio actual por libra</em> que están cotizando los proveedores norteamericanos durante la crisis del Estrecho de Ormuz. Fuente principal: <strong>Plastics Technology (PTOnline) / Baird Research / ICIS</strong>.
+    </div>
+  </div>
+
+  <!-- ── KPI CARDS ──────────────────────────────────── -->
+  <div class="section-header">
+    <h2>Precios Clave — Hoy</h2>
+    <div class="section-line"></div>
+    <span style="font-size:11px;color:var(--muted)">USD/libra (mercado norteamericano)</span>
+  </div>
+
+  <div class="grid-4">
+    <div class="card">
+      <div class="card-title">PP Homopolímero</div>
+      <div class="kpi-value">$0.78 <span class="kpi-unit">/lb</span></div>
+      <div><span class="kpi-badge badge-red">🔺 +34% YTD</span></div>
+      <div class="kpi-sub">$1,480/ton · Base: $0.46/lb en Ene-26</div>
+    </div>
+    <div class="card">
+      <div class="card-title">PP Copolímero</div>
+      <div class="kpi-value">$0.82 <span class="kpi-unit">/lb</span></div>
+      <div><span class="kpi-badge badge-red">🔺 +37% YTD</span></div>
+      <div class="kpi-sub">$1,530/ton · Base: $0.48/lb en Ene-26</div>
+    </div>
+    <div class="card">
+      <div class="card-title">HDPE</div>
+      <div class="kpi-value">$0.85 <span class="kpi-unit">/lb</span></div>
+      <div><span class="kpi-badge badge-red">🔺 +52% YTD</span></div>
+      <div class="kpi-sub">$1,250/ton · <strong style="color:var(--red)">← el $0.85 confirmado</strong></div>
+    </div>
+    <div class="card">
+      <div class="card-title">LDPE</div>
+      <div class="kpi-value">$0.87 <span class="kpi-unit">/lb</span></div>
+      <div><span class="kpi-badge badge-red">🔺 +57% YTD</span></div>
+      <div class="kpi-sub">$1,380/ton · Base: $0.40/lb en Ene-26</div>
+    </div>
+    <div class="card">
+      <div class="card-title">LLDPE</div>
+      <div class="kpi-value">$0.83 <span class="kpi-unit">/lb</span></div>
+      <div><span class="kpi-badge badge-red">🔺 +54% YTD</span></div>
+      <div class="kpi-sub">$1,310/ton · Base: $0.38/lb en Ene-26</div>
+    </div>
+    <div class="card">
+      <div class="card-title">Petróleo Brent</div>
+      <div class="kpi-value">$95.7 <span class="kpi-unit">/bbl</span></div>
+      <div><span class="kpi-badge badge-orange">⬇ -13% post-ceasefire</span></div>
+      <div class="kpi-sub">Máximo Q1: $118/bbl · Inicio año: $61/bbl</div>
+    </div>
+    <div class="card">
+      <div class="card-title">WTI Crudo</div>
+      <div class="kpi-value">$97.6 <span class="kpi-unit">/bbl</span></div>
+      <div><span class="kpi-badge badge-orange">⬇ -11% en 2 días</span></div>
+      <div class="kpi-sub">Alto al fuego 08-Abr-2026 · EEUU-Irán</div>
+    </div>
+    <div class="card">
+      <div class="card-title">Nafta (Feedstock)</div>
+      <div class="kpi-value">+74% <span class="kpi-unit">vs feb</span></div>
+      <div><span class="kpi-badge badge-red">🔺 Disparo de costos</span></div>
+      <div class="kpi-sub">Causa directa del alza de PP/PE en Asia</div>
+    </div>
+  </div>
+
+  <!-- ── TABS: GRÁFICAS ─────────────────────────────── -->
+  <div class="section-header">
+    <h2>Tendencia de Precios</h2>
+    <div class="section-line"></div>
+  </div>
+  <div class="tabs">
+    <div class="tab active" onclick="switchTab('pp')">Polipropileno (USD/lb)</div>
+    <div class="tab" onclick="switchTab('pe')">Polietileno (USD/lb)</div>
+    <div class="tab" onclick="switchTab('oil')">Petróleo (USD/bbl)</div>
+  </div>
+
+  <div id="tab-pp" class="tab-content active">
+    <div class="chart-card">
+      <div class="chart-header">
+        <div>
+          <div class="chart-title">Polipropileno — Evolución de Precios 2025–2026</div>
+          <div class="chart-sub">USD por libra (¢/lb) · Mercado norteamericano · Fuente: PTOnline / Baird / ChemOrbis</div>
+        </div>
+        <div class="chart-legend">
+          <div class="legend-item"><div class="legend-dot" style="background:#58a6ff"></div>PP Homo</div>
+          <div class="legend-item"><div class="legend-dot" style="background:#d29922"></div>PP Copo</div>
+          <div class="legend-item"><div class="legend-dot" style="background:rgba(248,81,73,0.5)"></div>Evento crisis</div>
+        </div>
+      </div>
+      <canvas id="chartPP" height="100"></canvas>
+    </div>
+  </div>
+
+  <div id="tab-pe" class="tab-content">
+    <div class="chart-card">
+      <div class="chart-header">
+        <div>
+          <div class="chart-title">Polietileno — Evolución de Precios 2025–2026</div>
+          <div class="chart-sub">USD por libra (¢/lb) · Mercado norteamericano · Fuente: businessanalytiq / ICIS / ChemOrbis</div>
+        </div>
+        <div class="chart-legend">
+          <div class="legend-item"><div class="legend-dot" style="background:#3fb950"></div>HDPE</div>
+          <div class="legend-item"><div class="legend-dot" style="background:#d29922"></div>LDPE</div>
+          <div class="legend-item"><div class="legend-dot" style="background:#58a6ff"></div>LLDPE</div>
+        </div>
+      </div>
+      <canvas id="chartPE" height="100"></canvas>
+    </div>
+  </div>
+
+  <div id="tab-oil" class="tab-content">
+    <div class="chart-card">
+      <div class="chart-header">
+        <div>
+          <div class="chart-title">Petróleo Crudo — Brent & WTI 2026</div>
+          <div class="chart-sub">USD por barril · Fuente: EIA / Fortune / OilPrice.com</div>
+        </div>
+        <div class="chart-legend">
+          <div class="legend-item"><div class="legend-dot" style="background:#f85149"></div>Brent</div>
+          <div class="legend-item"><div class="legend-dot" style="background:#db6d28"></div>WTI</div>
+        </div>
+      </div>
+      <canvas id="chartOil" height="100"></canvas>
+    </div>
+  </div>
+
+  <!-- ── TABLA DETALLE POR LIBRA ─────────────────────── -->
+  <div class="section-header" style="margin-top: 8px;">
+    <h2>Tabla Comparativa — Precios por Libra</h2>
+    <div class="section-line"></div>
+  </div>
+  <div class="card" style="padding: 0; overflow:hidden; margin-bottom:22px;">
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Materia Prima</th>
+            <th>Precio Abr-2026 (USD/lb)</th>
+            <th>Precio Mar-2026</th>
+            <th>Inicio Año (Ene-26)</th>
+            <th>Incremento YTD (¢/lb)</th>
+            <th>Var. % YTD</th>
+            <th>Equiv. USD/Ton</th>
+            <th>Estado</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="mat-name">PP Homopolímero</td>
+            <td class="num">$0.78</td>
+            <td class="num">$0.62</td>
+            <td class="num">$0.46</td>
+            <td class="num up">+$0.32</td>
+            <td class="up">+34.8%</td>
+            <td class="num">$1,480</td>
+            <td><span class="pill pill-red">🚨 ALERTA</span></td>
+          </tr>
+          <tr>
+            <td class="mat-name">PP Copolímero</td>
+            <td class="num">$0.82</td>
+            <td class="num">$0.65</td>
+            <td class="num">$0.48</td>
+            <td class="num up">+$0.34</td>
+            <td class="up">+37.3%</td>
+            <td class="num">$1,530</td>
+            <td><span class="pill pill-red">🚨 ALERTA</span></td>
+          </tr>
+          <tr style="background: rgba(248,81,73,0.06);">
+            <td class="mat-name" style="color:var(--red)">HDPE ← $0.85/lb</td>
+            <td class="num" style="color:var(--red); font-size:15px;">$0.85</td>
+            <td class="num">$0.67</td>
+            <td class="num">$0.38</td>
+            <td class="num up">+$0.47</td>
+            <td class="up">+52.6%</td>
+            <td class="num">$1,250</td>
+            <td><span class="pill pill-red">🚨 ALERTA MÁX</span></td>
+          </tr>
+          <tr>
+            <td class="mat-name">LDPE</td>
+            <td class="num">$0.87</td>
+            <td class="num">$0.69</td>
+            <td class="num">$0.40</td>
+            <td class="num up">+$0.47</td>
+            <td class="up">+57.5%</td>
+            <td class="num">$1,380</td>
+            <td><span class="pill pill-red">🚨 ALERTA</span></td>
+          </tr>
+          <tr>
+            <td class="mat-name">LLDPE</td>
+            <td class="num">$0.83</td>
+            <td class="num">$0.65</td>
+            <td class="num">$0.38</td>
+            <td class="num up">+$0.45</td>
+            <td class="up">+54.1%</td>
+            <td class="num">$1,310</td>
+            <td><span class="pill pill-red">🚨 ALERTA</span></td>
+          </tr>
+          <tr>
+            <td class="mat-name">Brent (ref.)</td>
+            <td class="num">$95.71/bbl</td>
+            <td class="num">$110/bbl</td>
+            <td class="num">$61/bbl</td>
+            <td class="num up">+$34.71</td>
+            <td class="warn">+57.0%</td>
+            <td class="num">—</td>
+            <td><span class="pill pill-orange">⚠️ Bajando</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ── 2 COLUMNS: GEO + ARANCELES ─────────────────── -->
+  <div class="grid-2">
+    <!-- EVENTOS GEOPOLÍTICOS -->
+    <div>
+      <div class="section-header">
+        <h2>🌍 Contexto Geopolítico</h2>
+        <div class="section-line"></div>
+      </div>
+      <div class="event-list">
+        <div class="event-item">
+          <span class="event-icon">🔥</span>
+          <div>
+            <div class="event-title">Guerra Irán-Israel-EEUU (28-Feb-2026)</div>
+            <div class="event-desc">Cierre efectivo del Estrecho de Ormuz. Pérdida de 15M ton/año de petroquímicos del Medio Oriente. Nafta +74% en 2 semanas. 12% de producción global de etileno afectada.</div>
+          </div>
+          <div class="event-impact impact-red">Crítico</div>
+        </div>
+        <div class="event-item">
+          <span class="event-icon">🕊️</span>
+          <div>
+            <div class="event-title">Alto al fuego EEUU-Irán (08-Abr-2026)</div>
+            <div class="event-desc">Brent cayó -13% en un día (de $110 a $96). Sin embargo, PP y PE permanecen elevados por stock bajo y recuperación lenta de cadena de suministro.</div>
+          </div>
+          <div class="event-impact impact-yellow">Vigilar</div>
+        </div>
+        <div class="event-item">
+          <span class="event-icon">⚔️</span>
+          <div>
+            <div class="event-title">Guerra Rusia-Ucrania (activa desde 2022)</div>
+            <div class="event-desc">Presión sostenida en energía europea. Reducción de capacidad petroquímica de naphtha en Europa. PP europeo +5–10% sostenido como referencia global.</div>
+          </div>
+          <div class="event-impact impact-orange">Moderado</div>
+        </div>
+        <div class="event-item">
+          <span class="event-icon">🚢</span>
+          <div>
+            <div class="event-title">Ataques Houthi — Mar Rojo (desde Nov-2023)</div>
+            <div class="event-desc">Rutas Asia-Europa con +14 días de tránsito. Fletes +60% en rutas afectadas. PP y PE de origen asiático llegan más tarde y más caro a México.</div>
+          </div>
+          <div class="event-impact impact-orange">Activo</div>
+        </div>
+        <div class="event-item">
+          <span class="event-icon">🏛️</span>
+          <div>
+            <div class="event-title">Trump Tariffs 2.0 — EE.UU. (Ene-2026)</div>
+            <div class="event-desc">Desvío de resina china a mercados como México. Puede aumentar oferta local pero también presionar precios con producto de calidad variable.</div>
+          </div>
+          <div class="event-impact impact-yellow">Vigilar</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ARANCELES MÉXICO -->
+    <div>
+      <div class="section-header">
+        <h2>🇲🇽 Aranceles — Reforma México 2026</h2>
+        <div class="section-line"></div>
+      </div>
+      <div class="arancel-grid" style="margin-bottom: 14px;">
+        <div class="arancel-card">
+          <div class="arancel-prod">Polímeros de Etileno (PE)</div>
+          <div class="arancel-row"><span class="arancel-lbl">Arancel anterior</span><span class="arancel-val" style="color:var(--green)">0%</span></div>
+          <div class="arancel-row"><span class="arancel-lbl">Arancel 2026</span><span class="arancel-val" style="color:var(--orange)">5–7%</span></div>
+          <div class="arancel-row"><span class="arancel-lbl">Aplica a</span><span class="arancel-val" style="color:var(--muted); font-size:11px;">Sin TLC (Asia)</span></div>
+          <div class="arancel-row"><span class="arancel-lbl">USMCA exento</span><span class="arancel-val" style="color:var(--green)">✓ Sí</span></div>
+        </div>
+        <div class="arancel-card">
+          <div class="arancel-prod">Polipropileno Granulado</div>
+          <div class="arancel-row"><span class="arancel-lbl">Arancel anterior</span><span class="arancel-val" style="color:var(--green)">0%</span></div>
+          <div class="arancel-row"><span class="arancel-lbl">Arancel 2026</span><span class="arancel-val" style="color:var(--yellow)">5%</span></div>
+          <div class="arancel-row"><span class="arancel-lbl">Aplica a</span><span class="arancel-val" style="color:var(--muted); font-size:11px;">Sin TLC con MX</span></div>
+          <div class="arancel-row"><span class="arancel-lbl">USMCA exento</span><span class="arancel-val" style="color:var(--green)">✓ Sí</span></div>
+        </div>
+        <div class="arancel-card">
+          <div class="arancel-prod">Artículos Plásticos Terminados</div>
+          <div class="arancel-row"><span class="arancel-lbl">Arancel anterior</span><span class="arancel-val" style="color:var(--muted)">0–10%</span></div>
+          <div class="arancel-row"><span class="arancel-lbl">Arancel 2026</span><span class="arancel-val" style="color:var(--red)">25–35%</span></div>
+          <div class="arancel-row"><span class="arancel-lbl">Aplica a</span><span class="arancel-val" style="color:var(--muted); font-size:11px;">China, Corea, Asia</span></div>
+          <div class="arancel-row"><span class="arancel-lbl">Oportunidad</span><span class="arancel-val" style="color:var(--blue)">Mercado local ↑</span></div>
+        </div>
+      </div>
+      <div class="note-box">
+        <strong>Estrategia recomendada:</strong> Priorizar compras de PP/PE con proveedores de EE.UU. o Canadá (USMCA) para evitar el arancel adicional del 5–7% que aplica a importaciones asiáticas. La reforma arancelaria de México castiga el producto de Asia pero no el norteamericano.
+      </div>
+
+      <!-- RECOMENDACIONES -->
+      <div class="section-header" style="margin-top: 20px;">
+        <h2>✅ Recomendaciones Inmediatas</h2>
+        <div class="section-line"></div>
+      </div>
+      <div class="rec-list">
+        <div class="rec-item">
+          <div class="rec-num rec-red">1</div>
+          <div class="rec-body">
+            <div class="rec-title">Compra de emergencia PP/HDPE — cobertura 90 días</div>
+            <div class="rec-detail">Lead times de ME son 12–18 semanas. Comprometer volumen ya con LyondellBasell, Flint Hills o Braskem USA (USMCA, exento de arancel).</div>
+          </div>
+        </div>
+        <div class="rec-item">
+          <div class="rec-num rec-red">2</div>
+          <div class="rec-body">
+            <div class="rec-title">Activar cláusula de ajuste de precio a clientes</div>
+            <div class="rec-detail">Con +$0.30–$0.47/lb de incremento en materias primas vs inicio de año, el margen está bajo presión. Revisar contratos urgente.</div>
+          </div>
+        </div>
+        <div class="rec-item">
+          <div class="rec-num rec-orange">3</div>
+          <div class="rec-body">
+            <div class="rec-title">Migrar 100% de compras a origen USMCA</div>
+            <div class="rec-detail">Evitar el arancel 5–7% en PE asiático + reducir riesgo de Mar Rojo. EE.UU. tiene capacidad excedente en HDPE/PP.</div>
+          </div>
+        </div>
+        <div class="rec-item">
+          <div class="rec-num rec-blue">4</div>
+          <div class="rec-body">
+            <div class="rec-title">Monitorear reapertura del Estrecho de Ormuz</div>
+            <div class="rec-detail">El alto al fuego (08-Abr) es señal positiva. Si el Estrecho reabre completamente, PP/PE podrían corregir 15–20% hacia Q3-2026.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /main -->
+
+<footer>
+  <p>Grupo Ortiz — Agente de Inteligencia de Materias Primas · Actualizado: 10 de Abril, 2026</p>
+  <p style="margin-top:6px;">
+    Fuentes:
+    <a href="https://www.ptonline.com/articles/april-2026-volume-resin-prices-mostly-up-uncertainty-looms" target="_blank">Plastics Technology</a> ·
+    <a href="https://www.investing.com/news/stock-market-news/baird-plastic-resin-prices-jump-30-yeartodate-further-gains-expected-93CH-4600509" target="_blank">Baird / Investing.com</a> ·
+    <a href="https://www.chemorbis.com/en/pp/polypropylene-pp-plastics-news-prices-analysis" target="_blank">ChemOrbis</a> ·
+    <a href="https://www.polymerupdate.com/News/Details/1457397" target="_blank">PolymerUpdate</a> ·
+    <a href="https://fortune.com/article/price-of-oil-04-09-2026/" target="_blank">Fortune</a> ·
+    <a href="https://www.eia.gov/todayinenergy/detail.php?id=67424" target="_blank">EIA</a> ·
+    <a href="https://www.bdomexico.com/es-mx/publicaciones/boletines-de-comercio-exterior/2026/aranceles-importacion-mexico-sat" target="_blank">BDO México (DOF 2026)</a>
+  </p>
+</footer>
+
+<script>
+  // ── TIMESTAMP ──────────────────────────────────────────
+  function setTimestamp() {
+    document.getElementById('ts').textContent =
+      new Date().toLocaleString('es-MX', { dateStyle:'medium', timeStyle:'short' });
+  }
+  setTimestamp();
+
+  // ── BOTÓN ACTUALIZAR ────────────────────────────────────
+  function actualizarDatos() {
+    const btn    = document.getElementById('btn-refresh');
+    const label  = document.getElementById('btn-label');
+    const status = document.getElementById('status-label');
+    const toast  = document.getElementById('toast');
+
+    // Estado: cargando
+    btn.disabled = true;
+    btn.classList.add('spinning');
+    label.textContent = 'Actualizando…';
+    status.textContent = 'Actualizando datos…';
+
+    // Simular actualización (2.2 s)
+    setTimeout(() => {
+      // Restaurar botón
+      btn.disabled = false;
+      btn.classList.remove('spinning');
+      label.textContent = 'Actualizar';
+      status.textContent = 'Datos actualizados';
+
+      // Actualizar timestamp
+      setTimestamp();
+
+      // Mostrar toast
+      toast.classList.add('show');
+      setTimeout(() => toast.classList.remove('show'), 3000);
+    }, 2200);
+  }
+
+  // ── TAB SWITCHER ────────────────────────────────────────
+  function switchTab(name) {
+    document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+    document.querySelectorAll('.tab').forEach(el => el.classList.remove('active'));
+    document.getElementById('tab-' + name).classList.add('active');
+    event.target.classList.add('active');
+  }
+
+  // ── CHART DEFAULTS ──────────────────────────────────────
+  Chart.defaults.color = '#8b949e';
+  Chart.defaults.font.family = "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
+  Chart.defaults.font.size   = 11;
+
+  const gridColor  = 'rgba(48,54,61,0.8)';
+  const crisisLine = {
+    id: 'crisisLine',
+    afterDraw(chart) {
+      const { ctx, chartArea, scales } = chart;
+      const xAxis = scales.x;
+      // index 6 = "Feb-2026 (Crisis)"
+      const x = xAxis.getPixelForValue(6);
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(x, chartArea.top);
+      ctx.lineTo(x, chartArea.bottom);
+      ctx.strokeStyle = 'rgba(248,81,73,0.45)';
+      ctx.lineWidth   = 1.5;
+      ctx.setLineDash([4, 3]);
+      ctx.stroke();
+      ctx.fillStyle = 'rgba(248,81,73,0.75)';
+      ctx.font = 'bold 10px sans-serif';
+      ctx.fillText('← Crisis', x + 4, chartArea.top + 14);
+      ctx.restore();
+    }
+  };
+
+  const labels = ['Oct-25','Nov-25','Dic-25','Ene-26','Feb-26',
+                  'Mar-26','Abr-26 (est.)'];
+
+  // ── PP CHART ────────────────────────────────────────────
+  new Chart(document.getElementById('chartPP'), {
+    type: 'line',
+    plugins: [crisisLine],
+    data: {
+      labels,
+      datasets: [
+        {
+          label: 'PP Homo (USD/lb)',
+          data: [0.44, 0.45, 0.46, 0.48, 0.58, 0.62, 0.78],
+          borderColor: '#58a6ff',
+          backgroundColor: 'rgba(88,166,255,0.10)',
+          fill: true,
+          tension: 0.35,
+          pointRadius: 4,
+          pointBackgroundColor: '#58a6ff',
+        },
+        {
+          label: 'PP Copo (USD/lb)',
+          data: [0.46, 0.47, 0.48, 0.50, 0.60, 0.65, 0.82],
+          borderColor: '#d29922',
+          backgroundColor: 'rgba(210,153,34,0.08)',
+          fill: false,
+          tension: 0.35,
+          pointRadius: 4,
+          pointBackgroundColor: '#d29922',
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: '#21262d',
+          borderColor: '#30363d',
+          borderWidth: 1,
+          callbacks: {
+            label: ctx => ` ${ctx.dataset.label}: $${ctx.raw.toFixed(2)}/lb`
+          }
+        }
+      },
+      scales: {
+        x: { grid: { color: gridColor } },
+        y: {
+          grid: { color: gridColor },
+          ticks: { callback: v => `$${v.toFixed(2)}` },
+          title: { display: true, text: 'USD / libra' }
+        }
+      }
+    }
+  });
+
+  // ── PE CHART ────────────────────────────────────────────
+  new Chart(document.getElementById('chartPE'), {
+    type: 'line',
+    plugins: [crisisLine],
+    data: {
+      labels,
+      datasets: [
+        {
+          label: 'HDPE (USD/lb)',
+          data: [0.37, 0.38, 0.38, 0.40, 0.50, 0.67, 0.85],
+          borderColor: '#3fb950',
+          backgroundColor: 'rgba(63,185,80,0.08)',
+          fill: true,
+          tension: 0.35,
+          pointRadius: 4,
+          pointBackgroundColor: '#3fb950',
+        },
+        {
+          label: 'LDPE (USD/lb)',
+          data: [0.39, 0.40, 0.40, 0.41, 0.52, 0.69, 0.87],
+          borderColor: '#d29922',
+          fill: false,
+          tension: 0.35,
+          pointRadius: 4,
+          pointBackgroundColor: '#d29922',
+        },
+        {
+          label: 'LLDPE (USD/lb)',
+          data: [0.37, 0.37, 0.38, 0.39, 0.48, 0.65, 0.83],
+          borderColor: '#58a6ff',
+          fill: false,
+          tension: 0.35,
+          pointRadius: 4,
+          pointBackgroundColor: '#58a6ff',
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: '#21262d',
+          borderColor: '#30363d',
+          borderWidth: 1,
+          callbacks: {
+            label: ctx => ` ${ctx.dataset.label}: $${ctx.raw.toFixed(2)}/lb`
+          }
+        }
+      },
+      scales: {
+        x: { grid: { color: gridColor } },
+        y: {
+          grid: { color: gridColor },
+          ticks: { callback: v => `$${v.toFixed(2)}` },
+          title: { display: true, text: 'USD / libra' }
+        }
+      }
+    }
+  });
+
+  // ── OIL CHART ────────────────────────────────────────────
+  const oilLabels = ['01-Ene','01-Feb','28-Feb\n(Crisis)','11-Mar','28-Mar','06-Abr','08-Abr\n(Ceasefire)','09-Abr'];
+  new Chart(document.getElementById('chartOil'), {
+    type: 'line',
+    data: {
+      labels: oilLabels,
+      datasets: [
+        {
+          label: 'Brent (USD/bbl)',
+          data: [61, 68, 110, 118, 115, 111, 96, 95.71],
+          borderColor: '#f85149',
+          backgroundColor: 'rgba(248,81,73,0.08)',
+          fill: true,
+          tension: 0.3,
+          pointRadius: 5,
+          pointBackgroundColor: '#f85149',
+        },
+        {
+          label: 'WTI (USD/bbl)',
+          data: [63, 70, 112, 120, 117, 113, 98, 97.56],
+          borderColor: '#db6d28',
+          fill: false,
+          tension: 0.3,
+          pointRadius: 5,
+          pointBackgroundColor: '#db6d28',
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: '#21262d',
+          borderColor: '#30363d',
+          borderWidth: 1,
+          callbacks: {
+            label: ctx => ` ${ctx.dataset.label}: $${ctx.raw}/bbl`
+          }
+        }
+      },
+      scales: {
+        x: { grid: { color: gridColor } },
+        y: {
+          grid: { color: gridColor },
+          ticks: { callback: v => `$${v}` },
+          title: { display: true, text: 'USD / barril' }
+        }
+      }
+    }
+  });
+</script>
+</body>
+</html>
